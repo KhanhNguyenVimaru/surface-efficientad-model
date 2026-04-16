@@ -1,85 +1,163 @@
-# EfficientAD Surface Inspection Project
+# EfficientAD Training on Google Colab
 
-This project provides a minimal end-to-end scaffold for:
-- training an EfficientAD model with Anomalib
-- serving inference through FastAPI
-- uploading images from a frontend and visualizing anomaly heatmaps
+## 1. Introduction
 
-## Structure
+This document describes the process of training the EfficientAD anomaly detection model using the MVTec AD dataset on Google Colab. EfficientAD is a fast and efficient anomaly detection model based on a teacher–student architecture combined with an autoencoder.
 
-- `backend/app/main.py`: FastAPI app
-- `backend/app/model_service.py`: EfficientAD model loader and prediction wrapper
-- `backend/app/schemas.py`: API response schemas
-- `backend/app/config.py`: environment-driven settings
-- `backend/app/utils.py`: image utilities
-- `backend/train_efficientad.py`: training script for MVTec AD
-- `frontend/index.html`: simple upload UI
-- `frontend/app.js`: frontend logic
-- `frontend/styles.css`: styling
+---
 
-## 1. Environment
+## 2. Environment Setup
 
-Windows (PowerShell):
+Open Google Colab and create a new notebook. Enable GPU support:
 
-```powershell
-cd backend
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-```
+Runtime → Change runtime type → Select GPU
 
-Linux/macOS:
+Verify GPU availability:
 
-```bash
-cd backend
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
+\`\`\`python
+!nvidia-smi
+\`\`\`
 
-## 2. Train a model
+---
 
-Example with MVTec AD bottle category:
+## 3. Clone Repository and Install Dependencies
 
-```bash
-cd backend
-python train_efficientad.py \
-  --data-root C:/datasets/MVTecAD \
-  --category bottle \
-  --max-epochs 20 \
-  --model-size small
-```
+Run the following commands:
 
-`--data-root` must be the real MVTecAD root containing `<root>/<category>/train/...` and `<root>/<category>/test/...`.
-If the category folder does not exist, anomalib will download the dataset to that root.
+\`\`\`bash
+!git clone https://github.com/KhanhNguyenVimaru/surface-efficientad-model.git
+%cd surface-efficientad-model
+!pip install -r requirements.txt
+\`\`\`
 
-After training, point `MODEL_PATH` to the exported checkpoint (`.ckpt`) or torch file.
+---
 
-## 3. Run API
+## 4. Dataset Preparation
 
-```bash
-cd backend
-cp .env.example .env
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
+Download and extract the MVTec AD dataset:
 
-Windows equivalent:
+\`\`\`bash
+!wget https://www.mydrive.ch/shares/38536/download/412760263-1629953853/mvtec_anomaly_detection.tar.xz
+!tar -xf mvtec_anomaly_detection.tar.xz
+\`\`\`
 
-```powershell
-cd backend
-Copy-Item .env.example .env
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
+After extraction, the directory structure should be:
 
-## 4. Important notes
+\`\`\`
+/content/
+  bottle/
+  cable/
+  capsule/
+  ...
+\`\`\`
 
-- For PyTorch model loading through `TorchInferencer`, set `TRUST_REMOTE_CODE=1` because Anomalib warns that torch checkpoint loading uses pickle.
-- For stricter production deployment, prefer exporting to OpenVINO and switching the inferencer implementation.
-- FastAPI file uploads require `python-multipart`.
+---
 
-## 5. Next steps
+## 5. Training (Capsule Example)
 
-- add model export to OpenVINO
-- persist upload history
-- add threshold calibration endpoint
-- replace the demo frontend with React/Vue if needed
+To train the EfficientAD model on the capsule category, run:
+
+\`\`\`bash
+%cd /content/surface-efficientad-model
+
+!python train_efficientad.py \\
+  --data-root /content \\
+  --category capsule \\
+  --max-epochs 30 \\
+  --batch-size 1 \\
+  --image-size 256 \\
+  --devices 1 \\
+  --accelerator gpu \\
+  --model-size s
+\`\`\`
+
+---
+
+## 6. Parameter Description
+
+| Parameter | Description |
+|----------|------------|
+| --data-root | Path to dataset root |
+| --category | Target MVTec category |
+| --max-epochs | Number of training epochs |
+| --batch-size | Must be 1 for EfficientAD |
+| --image-size | Input image resolution |
+| --devices | Number of GPUs |
+| --accelerator | Hardware type |
+| --model-size | Model size (s or m) |
+
+---
+
+## 7. Training Output
+
+After training, results are stored in:
+
+\`\`\`
+/content/surface-efficientad-model/results/efficientad_capsule/
+\`\`\`
+
+Important files:
+
+\`\`\`
+weights/lightning/model.ckpt
+images/
+\`\`\`
+
+---
+
+## 8. Save Model to Google Drive
+
+\`\`\`python
+from google.colab import drive
+drive.mount('/content/drive')
+
+!cp /content/surface-efficientad-model/results/efficientad_capsule/EfficientAd/MVTecAD/capsule/v1/weights/lightning/model.ckpt \\
+/content/drive/MyDrive/capsule.ckpt
+\`\`\`
+
+---
+
+## 9. Final Output
+
+The final trained model is:
+
+\`\`\`
+capsule.ckpt
+\`\`\`
+
+This file can be used for inference, deployment, or further evaluation.
+
+---
+
+## 10. Inference Example
+
+\`\`\`python
+from anomalib.deploy import TorchInferencer
+
+inferencer = TorchInferencer(path="capsule.ckpt")
+
+result = inferencer.predict("test.jpg")
+
+print(result.pred_score)
+print(result.pred_label)
+\`\`\`
+
+---
+
+## 11. Notes
+
+- Each category requires a separate model.
+- EfficientAD requires batch size equal to 1.
+- Training is performed using only normal (good) images.
+- Anomalies are detected based on deviations from learned normal patterns.
+
+---
+
+## 12. Summary
+
+| Item | Value |
+|------|------|
+| Dataset | MVTec AD |
+| Model | EfficientAD |
+| Category | Capsule |
+| Output | capsule.ckpt |
